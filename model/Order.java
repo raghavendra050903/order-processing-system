@@ -24,5 +24,6 @@ public class Order {
     }
 
     public int getOrderId() { return orderId; }
+    public int getCustomerId() { return customerId; }
     public OrderPriority getPriority() { return priority; }
 }

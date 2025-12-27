@@ -38,7 +38,9 @@ public class OrderProcessor implements Runnable {
                 }
 
                 service.updateStatus(order.getOrderId(), OrderStatus.COMPLETED);
-                System.out.println("Order " + order.getOrderId() + " COMPLETED");
+                System.out.println("Order ID: " + order.getOrderId() +", Customer ID: " + order.getCustomerId() +
+", Status: COMPLETED");
+
                 return;
 
             } catch (Exception e) {
@@ -48,8 +50,11 @@ public class OrderProcessor implements Runnable {
                 if (!retryEnabled || attempts >= 3) {
                     service.updateStatus(order.getOrderId(), OrderStatus.FAILED);
                     System.out.println(
-                            "Order " + order.getOrderId() +
-                            " FAILED after " + attempts + " attempt(s)");
+        "Order ID: " + order.getOrderId() +
+        ", Customer ID: " + order.getCustomerId() +
+        ", Status: FAILED after " + attempts + " attempt(s)"
+);
+
                     return;
                 }
             }

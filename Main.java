@@ -17,25 +17,36 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
         OrderService service = new OrderService();
 
-        // -------- TAKE ORDERS FROM USER --------
-        System.out.print("Enter number of orders: ");
-        int n = scanner.nextInt();
+        // Sample orders for testing
+        service.insertOrder(1, 5000, OrderPriority.HIGH);
+        service.insertOrder(2, 1500, OrderPriority.LOW);
+        service.insertOrder(3, 3000, OrderPriority.MEDIUM);
+        service.insertOrder(4, 6000, OrderPriority.HIGH);
+        service.insertOrder(5, 700, OrderPriority.LOW);
+        service.insertOrder(6, 4300, OrderPriority.HIGH);
 
-        for (int i = 1; i <= n; i++) {
-            System.out.println("\nOrder " + i);
 
-            System.out.print("Customer ID: ");
-            int customerId = scanner.nextInt();
+        // // -------- TAKE ORDERS FROM USER --------
+        // System.out.print("Enter number of orders: ");
+        // int n = scanner.nextInt();
 
-            System.out.print("Order Amount: ");
-            double amount = scanner.nextDouble();
+        // for (int i = 1; i <= n; i++) {
+        //     System.out.println("\nOrder " + i);
 
-            System.out.print("Priority (HIGH / MEDIUM / LOW): ");
-            OrderPriority priority =
-                    OrderPriority.valueOf(scanner.next().toUpperCase());
+        //     System.out.print("Customer ID: ");
+        //     int customerId = scanner.nextInt();
 
-            service.insertOrder(customerId, amount, priority);
-        }
+        //     System.out.print("Order Amount: ");
+        //     double amount = scanner.nextDouble();
+
+        //     System.out.print("Priority (HIGH / MEDIUM / LOW): ");
+        //     OrderPriority priority =
+        //             OrderPriority.valueOf(scanner.next().toUpperCase());
+
+        //     service.insertOrder(customerId, amount, priority);
+        // }
+
+        // -------- FETCH NEW ORDERS --------
 
         List<Order> orders = service.fetchNewOrders();
 
@@ -73,11 +84,13 @@ public class Main {
     private static void runPriorityBased(
             List<Order> orders, OrderService service) {
 
-        ExecutorService executor = Executors.newFixedThreadPool(3);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
         for (Order o : orders)
             executor.submit(new OrderProcessor(o, service, false));
         executor.shutdown();
     }
+
+    // Retry-based processing with retries on failure
 
     private static void runRetryBased(
             List<Order> orders, OrderService service) {
@@ -88,6 +101,8 @@ public class Main {
         executor.shutdown();
     }
 
+    // Rate-limited processing to control order processing rate
+    
     private static void runRateLimited(
             List<Order> orders, OrderService service) {
 
