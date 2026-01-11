@@ -1,5 +1,8 @@
 package model;
 
 public enum OrderStatus {
-    NEW, PROCESSING, COMPLETED, FAILED
+    NEW,
+    PROCESSING,
+    COMPLETED,
+    FAILED
 }

@@ -1,7 +1,8 @@
 package service;
 
 import db.DatabaseManager;
-import model.*;
+import model.Order;
+import model.OrderStatus;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -9,12 +10,14 @@ import java.util.List;
 
 public class OrderService {
 
+    // Insert one order
     public synchronized void insertOrder(
-            int customerId, double amount, OrderPriority priority) {
+            int customerId, double amount, int priority) {
 
-        String sql =
-                "INSERT INTO orders (customer_id, order_amount, status, priority) " +
-                "VALUES (?, ?, ?, ?)";
+        String sql = """
+            INSERT INTO orders (customer_id, order_amount, status, priority)
+            VALUES (?, ?, ?, ?)
+        """;
 
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -22,7 +25,7 @@ public class OrderService {
             ps.setInt(1, customerId);
             ps.setDouble(2, amount);
             ps.setString(3, OrderStatus.NEW.name());
-            ps.setString(4, priority.name());
+            ps.setInt(4, priority);
             ps.executeUpdate();
 
         } catch (Exception e) {
@@ -30,39 +33,55 @@ public class OrderService {
         }
     }
 
-    /*
-     * Priority-based fetching (HIGH → MEDIUM → LOW)
-     */
-    public synchronized List<Order> fetchNewOrders() {
+    // 🔹 Generate 1000 orders using Java
+    public void insertBulkOrders(int count) {
+        for (int i = 1; i <= count; i++) {
+            insertOrder(
+                    1000 + i, // unique customer ID
+                    100 + (i * 10),// incremental amount
+                    (i % 5) + 1   // priority 1–5
+            );
+        }
+        System.out.println(count + " orders inserted");
+    }
+
+    // Batch fetch WITHOUT priority ordering
+    //limit: max number of rows to return.
+    //offset: number of rows to skip from the start. This implements pagination.
+
+    public List<Order> fetchOrdersInBatch(int limit, int offset) {
 
         List<Order> orders = new ArrayList<>();
 
-        String sql =
-                "SELECT * FROM orders WHERE status='NEW' " +
-                "ORDER BY CASE priority " +
-                "WHEN 'HIGH' THEN 1 " +
-                "WHEN 'MEDIUM' THEN 2 " +
-                "WHEN 'LOW' THEN 3 END";
+        String sql = """
+            SELECT order_id, customer_id, priority
+            FROM orders
+            WHERE status = 'NEW'
+            ORDER BY order_id ASC
+            LIMIT ? OFFSET ?
+        """;
 
         try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setInt(1, limit);
+            ps.setInt(2, offset);
+
+            ResultSet rs = ps.executeQuery();
 
             while (rs.next()) {
+                //inserting fetched orders into list
                 orders.add(new Order(
                         rs.getInt("order_id"),
                         rs.getInt("customer_id"),
-                        rs.getDouble("order_amount"),
-                        rs.getString("order_time"),
-                        OrderStatus.valueOf(rs.getString("status")),
-                        OrderPriority.valueOf(rs.getString("priority")),
-                        rs.getInt("retry_count")
+                        rs.getInt("priority")
                 ));
             }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
+
         return orders;
     }
 

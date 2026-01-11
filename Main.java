@@ -1,9 +1,8 @@
-import algorithm.AlgorithmType;
 import model.Order;
-import model.OrderPriority;
 import service.OrderService;
 import worker.OrderProcessor;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
@@ -17,114 +16,52 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
         OrderService service = new OrderService();
 
-        // Sample orders for testing
-        service.insertOrder(1, 5000, OrderPriority.HIGH);
-        service.insertOrder(2, 1500, OrderPriority.LOW);
-        service.insertOrder(3, 3000, OrderPriority.MEDIUM);
-        service.insertOrder(4, 6000, OrderPriority.HIGH);
-        service.insertOrder(5, 700, OrderPriority.LOW);
-        service.insertOrder(6, 4300, OrderPriority.HIGH);
+        // how many test orders to generate
+        System.out.print("Enter number of test orders to generate (0 - 1000): ");
+        int orderCount = scanner.nextInt();
 
-
-        // // -------- TAKE ORDERS FROM USER --------
-        // System.out.print("Enter number of orders: ");
-        // int n = scanner.nextInt();
-
-        // for (int i = 1; i <= n; i++) {
-        //     System.out.println("\nOrder " + i);
-
-        //     System.out.print("Customer ID: ");
-        //     int customerId = scanner.nextInt();
-
-        //     System.out.print("Order Amount: ");
-        //     double amount = scanner.nextDouble();
-
-        //     System.out.print("Priority (HIGH / MEDIUM / LOW): ");
-        //     OrderPriority priority =
-        //             OrderPriority.valueOf(scanner.next().toUpperCase());
-
-        //     service.insertOrder(customerId, amount, priority);
-        // }
-
-        // -------- FETCH NEW ORDERS --------
-
-        List<Order> orders = service.fetchNewOrders();
-
-        // -------- ALGORITHM SELECTION --------
-        System.out.println("\nSelect Algorithm:");
-        System.out.println("1. Priority-based");
-        System.out.println("2. Retry-based");
-        System.out.println("3. Rate-limited");
-        System.out.print("Choice: ");
-
-        int choice = scanner.nextInt();
-
-        AlgorithmType algo = switch (choice) {
-            case 1 -> AlgorithmType.PRIORITY_BASED;
-            case 2 -> AlgorithmType.RETRY_BASED;
-            case 3 -> AlgorithmType.RATE_LIMITED;
-            default -> throw new IllegalArgumentException("Invalid choice");
-        };
-
-        // -------- EXECUTION --------
-        switch (algo) {
-
-            case PRIORITY_BASED -> runPriorityBased(orders, service);
-
-            case RETRY_BASED -> runRetryBased(orders, service);
-
-            case RATE_LIMITED -> runRateLimited(orders, service);
+        if (orderCount > 0 && orderCount <= 1000) {
+            service.insertBulkOrders(orderCount);
+        } else if (orderCount == 0) {
+            System.out.println("Skipping test order generation.");
+        } else {
+            System.out.println("Invalid number. Max allowed is 1000.");
+            return;
         }
 
-        scanner.close();
-    }
+        System.out.print("Enter rate limit (orders/sec): ");
+        int rateLimit = scanner.nextInt();
 
-    // ---------- ALGORITHM IMPLEMENTATIONS ----------
+        Semaphore limiter = new Semaphore(rateLimit);
+        //fixed thread pool with 5 threads
+        ExecutorService executor = Executors.newFixedThreadPool(5);
 
-    private static void runPriorityBased(
-            List<Order> orders, OrderService service) {
+        //batch size for fetching orders
+        int batchSize = 10;
+        int offset = 0;
 
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        for (Order o : orders)
-            executor.submit(new OrderProcessor(o, service, false));
-        executor.shutdown();
-    }
+        while (true) {
 
-    // Retry-based processing with retries on failure
+            List<Order> batch =
+                    service.fetchOrdersInBatch(batchSize, offset);
 
-    private static void runRetryBased(
-            List<Order> orders, OrderService service) {
+            if (batch.isEmpty()) break;
 
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        for (Order o : orders)
-            executor.submit(new OrderProcessor(o, service, true));
-        executor.shutdown();
-    }
+            // PRIORITY APPLIED INSIDE BATCH
+            // creates a comparator that sorts by priority ascending (1,2,3,4,5).
+            batch.sort(Comparator.comparingInt(Order::getPriority));
 
-    // Rate-limited processing to control order processing rate
-    
-    private static void runRateLimited(
-            List<Order> orders, OrderService service) {
-
-        int N = 2; // orders per second
-        Semaphore limiter = new Semaphore(N);
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-
-        for (Order o : orders) {
-            try {
-                limiter.acquire();
-                executor.submit(() -> {
-                    try {
-                        new OrderProcessor(o, service, false).run();
-                    } finally {
-                        limiter.release();
-                    }
-                });
-                Thread.sleep(1000 / N);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            for (Order order : batch) { 
+                executor.submit(
+                        new OrderProcessor(order, service, limiter)
+                );
             }
+
+            //move to next batch
+            offset += batchSize;
         }
+
         executor.shutdown();
+        scanner.close();
     }
 }

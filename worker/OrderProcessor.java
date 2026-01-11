@@ -5,19 +5,22 @@ import model.OrderStatus;
 import service.OrderService;
 
 import java.util.Random;
+import java.util.concurrent.Semaphore;
 
 public class OrderProcessor implements Runnable {
 
     private final Order order;
     private final OrderService service;
-    private final boolean retryEnabled;
+    private final Semaphore rateLimiter;
 
     private static final Random random = new Random();
 
-    public OrderProcessor(Order order, OrderService service, boolean retryEnabled) {
+    public OrderProcessor(Order order,
+                          OrderService service,
+                          Semaphore rateLimiter) {
         this.order = order;
         this.service = service;
-        this.retryEnabled = retryEnabled;
+        this.rateLimiter = rateLimiter;
     }
 
     @Override
@@ -25,40 +28,49 @@ public class OrderProcessor implements Runnable {
 
         int attempts = 0;
 
-        do {
-            try {
+        try {
+            //Acquires a permit, if one is available and returns immediately, reducing the number of available permits by one
+            rateLimiter.acquire(); // RATE LIMIT
+
+            while (attempts < 3) {//retry up to 3 times
+                attempts++;
+
+                long sleepTime = 100 + random.nextInt(400);
+                long threadId = Thread.currentThread().getId();
+
+                System.out.println(
+                        "[Thread-" + threadId + "] START OrderID=" +
+                        order.getOrderId() +
+                        ", CustomerID=" + order.getCustomerId() +
+                        ", Priority=" + order.getPriority() +
+                        ", Sleep=" + sleepTime + "ms"
+                );
+
                 service.updateStatus(order.getOrderId(), OrderStatus.PROCESSING);
+                Thread.sleep(sleepTime);
 
-                // Simulate processing time (100–500 ms)
-                Thread.sleep(100 + random.nextInt(400));
-
-                // Simulate random failure (20%)
+                // 20% failure simulation
                 if (random.nextInt(10) < 2) {
-                    throw new RuntimeException();
+                    service.incrementRetry(order.getOrderId());
+                    throw new RuntimeException("Failed");
                 }
 
                 service.updateStatus(order.getOrderId(), OrderStatus.COMPLETED);
-                System.out.println("Order ID: " + order.getOrderId() +", Customer ID: " + order.getCustomerId() +
-", Status: COMPLETED");
 
+                System.out.println(
+                        "[Thread-" + threadId + "] DONE OrderID=" +
+                        order.getOrderId()
+                );
                 return;
-
-            } catch (Exception e) {
-                attempts++;
-                service.incrementRetry(order.getOrderId());
-
-                if (!retryEnabled || attempts >= 3) {
-                    service.updateStatus(order.getOrderId(), OrderStatus.FAILED);
-                    System.out.println(
-        "Order ID: " + order.getOrderId() +
-        ", Customer ID: " + order.getCustomerId() +
-        ", Status: FAILED after " + attempts + " attempt(s)"
-);
-
-                    return;
-                }
             }
 
-        } while (retryEnabled);
+            service.updateStatus(order.getOrderId(), OrderStatus.FAILED);
+
+        } catch (Exception e) {
+            service.updateStatus(order.getOrderId(), OrderStatus.FAILED);
+        } finally {
+            //Releases a permit, increasing the number of available permits by one
+            rateLimiter.release();
+        }
     }
 }
